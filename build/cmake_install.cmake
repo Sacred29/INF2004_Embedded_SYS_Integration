@@ -43,6 +43,8 @@ if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   include("C:/Users/USER/Documents/Embedded_Proj_Int/build/FREERTOS_KERNEL/cmake_install.cmake")
   include("C:/Users/USER/Documents/Embedded_Proj_Int/build/pico-sdk/cmake_install.cmake")
   include("C:/Users/USER/Documents/Embedded_Proj_Int/build/LineFollower/cmake_install.cmake")
+  include("C:/Users/USER/Documents/Embedded_Proj_Int/build/IR/cmake_install.cmake")
+  include("C:/Users/USER/Documents/Embedded_Proj_Int/build/Barcode/cmake_install.cmake")
 
 endif()
 

@@ -215,3 +215,9 @@ C:/Users/USER/Documents/Embedded_Proj_Int/build/pico-sdk/docs/CMakeFiles/rebuild
 C:/Users/USER/Documents/Embedded_Proj_Int/build/LineFollower/CMakeFiles/integration_LineFollower.dir
 C:/Users/USER/Documents/Embedded_Proj_Int/build/LineFollower/CMakeFiles/edit_cache.dir
 C:/Users/USER/Documents/Embedded_Proj_Int/build/LineFollower/CMakeFiles/rebuild_cache.dir
+C:/Users/USER/Documents/Embedded_Proj_Int/build/IR/CMakeFiles/Project_IR.dir
+C:/Users/USER/Documents/Embedded_Proj_Int/build/IR/CMakeFiles/edit_cache.dir
+C:/Users/USER/Documents/Embedded_Proj_Int/build/IR/CMakeFiles/rebuild_cache.dir
+C:/Users/USER/Documents/Embedded_Proj_Int/build/Barcode/CMakeFiles/Project_Barcode.dir
+C:/Users/USER/Documents/Embedded_Proj_Int/build/Barcode/CMakeFiles/edit_cache.dir
+C:/Users/USER/Documents/Embedded_Proj_Int/build/Barcode/CMakeFiles/rebuild_cache.dir

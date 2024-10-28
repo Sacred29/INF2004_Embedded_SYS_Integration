@@ -22,3 +22,5 @@ endif()
 pico_sdk_init()
 
 add_subdirectory(LineFollower)
+add_subdirectory(IR)
+add_subdirectory(Barcode)

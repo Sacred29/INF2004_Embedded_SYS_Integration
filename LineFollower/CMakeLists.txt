@@ -1,7 +1,8 @@
 
 if (EXISTS ${PICO_LWIP_CONTRIB_PATH}/apps/ping/ping.c)
 add_executable(integration_LineFollower
-linefollower.c
+main.c
+IR_DRIVER.c
 ${PICO_LWIP_CONTRIB_PATH}/apps/ping/ping.c
 )
 
