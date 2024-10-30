@@ -10,6 +10,12 @@
 #define ADC_GPIO 27
 #define ADC_Input 1
 #define NUM_SLOT 3
+#define BARCODE_BUFFER 10
+
+typedef struct {
+    bool pattern[BARCODE_BUFFER - 1];
+    char character;
+} ChecksumPattern;
 
 // Function declarations specific to barcode decoding
 void setup_barcode_decoder(void);
