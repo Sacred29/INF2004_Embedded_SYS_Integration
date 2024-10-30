@@ -1,14 +1,11 @@
 // line_follower.c
-#include "line_follower.h"      // Include the header file for function declarations
+#include "barcode_decoder.h"      // Include the header file for function declarations
 #include <stdio.h>
 #include "hardware/adc.h"
 #include "hardware/timer.h"
 #include <math.h>
 
-extern volatile bool is_black_ready;  
-extern volatile bool is_black; 
-
-void setup_line_follower() {
+void setup_barcode_decoder() {
     adc_init();
     gpio_disable_pulls(ADC_GPIO);            // Disable GPIO pull-ups/downs
     gpio_set_input_enabled(ADC_GPIO, false); // Disable digital input for continuous ADC reading
@@ -17,7 +14,7 @@ void setup_line_follower() {
 
 
 // Polling function for repeated ADC sampling
-bool line_follower_polling(__unused struct repeating_timer *t) {
+bool polling_function(__unused struct repeating_timer *t) {
     uint32_t reading = adc_read();
 
     static uint32_t data[NUM_SLOT] = {0};
@@ -50,7 +47,5 @@ bool line_follower_polling(__unused struct repeating_timer *t) {
         contrast_threshold = (uint32_t)ceil((double)(min_threshold+max_threshold) / 2);
     }
     
-    is_black = (adc_reading >= contrast_threshold);
-    is_black_ready = true;  
     return true;
 }

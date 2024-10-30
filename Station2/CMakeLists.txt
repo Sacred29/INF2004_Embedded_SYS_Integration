@@ -22,6 +22,7 @@ pico_enable_stdio_usb(Station2 1)
 
 
 target_link_libraries(Station2
+motor_control
 line_follower
 wheel_encoder_driver 
 hardware_adc

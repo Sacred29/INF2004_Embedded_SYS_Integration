@@ -21,8 +21,9 @@ endif()
 # Initialize the SDK
 pico_sdk_init()
 
-add_subdirectory(LineFollower)
+
 add_subdirectory(ultrasonic_driver)
 add_subdirectory(wheel_encoder_driver)
 add_subdirectory(Station2)
 add_subdirectory(LineDetection)
+add_subdirectory(Motor_Control)

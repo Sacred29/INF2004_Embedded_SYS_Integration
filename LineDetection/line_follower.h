@@ -7,13 +7,13 @@
 #include <stdbool.h>
 
 // ADC and GPIO configuration
-#define ADC_GPIO 26
-#define ADC_Input 0
+#define ADC_GPIO 28
+#define ADC_Input 2
 #define NUM_SLOT 3
 
 
 // Function declarations
 void setup_line_follower(void);
-bool polling_function(__unused struct repeating_timer *t);
+bool line_follower_polling(__unused struct repeating_timer *t);
 
 #endif // LINE_FOLLOWER_H
