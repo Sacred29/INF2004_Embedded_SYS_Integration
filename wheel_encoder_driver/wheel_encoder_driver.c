@@ -5,85 +5,77 @@
 #include "hardware/gpio.h"
 #include "hardware/timer.h"
 
-float wheel_diameter = 0.065;     // Wheel diameter in meters
+float wheel_diameter = 6.5;       // Wheel diameter in centimeters
 float pulses_per_revolution = 20; // Adjust based on the number of marks or holes the IR sensor detects per wheel revolution// Calculate the wheel speed in meters per second (m/s)
 
-void setupWheelEncoderPins(uint inputPin)
+uint32_t left_pulse_count = 0;
+uint32_t right_pulse_count = 0;
+uint32_t left_prev_pulse_count = 0;
+uint32_t right_prev_pulse_count = 0;
+
+void setupWheelEncoderPins(uint left_wheel_pin, uint right_wheel_pin)
 {
-     gpio_init(inputPin);
-     gpio_set_dir(inputPin, GPIO_IN);
-     gpio_pull_up(inputPin);
+     gpio_init(left_wheel_pin);
+     gpio_set_dir(left_wheel_pin, GPIO_IN);
+     gpio_pull_up(left_wheel_pin);
+
+     gpio_init(right_wheel_pin);
+     gpio_set_dir(right_wheel_pin, GPIO_IN);
+     gpio_pull_up(right_wheel_pin);
 }
 
-float calculate_wheel_speed(float pulse_width)
+void leftWheelPulseCounting()
 {
+     left_pulse_count++;
+}
+
+void rightWheelPulseCounting()
+{
+     right_prev_pulse_count++;
+}
+
+float getLeftWheelSpeed(float pulse_width)
+{
+     uint32_t left_current_pulse_count = left_pulse_count - left_prev_pulse_count;
+
+     float microsec_per_pulse = pulse_width / left_current_pulse_count;
+
      // Time between pulses (in seconds)
-     float time_between_pulses = pulse_width * 0.000001f; // Convert microseconds to seconds
+     float sec_per_pulse = microsec_per_pulse * 0.000001f; // Convert microseconds to seconds
 
-     if (time_between_pulses > 0)
-     {
-          // Wheel circumference
-          float wheel_circumference = 3.14159 * wheel_diameter;
+     // Wheel circumference
+     float wheel_circumference = 3.14159 * wheel_diameter;
 
-          // The number of complete revolution per second
-          float revolutions_per_second = 1 / (time_between_pulses * pulses_per_revolution);
+     // The number of complete revolution per second
+     float revolutions_per_second = 1 / (sec_per_pulse * pulses_per_revolution);
 
-          // Speed in meters per second (m/s)
-          float speed_meters_per_sec = revolutions_per_second * wheel_circumference;
+     // Speed in cemtimeters per second (cm/s)
+     float speed_meters_per_sec = revolutions_per_second * wheel_circumference;
 
-          return speed_meters_per_sec;
-     }
-     else
-     {
-          return 0.0; // If no pulse detected, speed is 0
-     }
+     left_prev_pulse_count = left_pulse_count;
+
+     return speed_meters_per_sec;
 }
 
-float wheel_encoder(uint gpio)
+float getRightWheelSpeed(float pulse_width)
 {
-     uint32_t pulse_count = 0;
+     uint32_t right_current_pulse_count = right_pulse_count - right_prev_pulse_count;
 
-     bool current_state;
-     bool previous_state = false;
+     float microsec_per_pulse = pulse_width / right_current_pulse_count;
 
-     float total_pulse_width = 0.0;
-     float current_pulse_width = 0.0;
+     // Time between pulses (in seconds)
+     float sec_per_pulse = microsec_per_pulse * 0.000001f; // Convert microseconds to seconds
 
-     uint64_t start_time = time_us_64();
-     uint64_t current_pulse_time = 0;
-     uint64_t last_pulse_time = 0;
+     // Wheel circumference
+     float wheel_circumference = 3.14159 * wheel_diameter;
 
-     while (1)
-     {
-          current_state = gpio_get(gpio);
-          current_pulse_time = time_us_64();
+     // The number of complete revolution per second
+     float revolutions_per_second = 1 / (sec_per_pulse * pulses_per_revolution);
 
-          if (current_state && !previous_state)
-          {
-               if (pulse_count >= 1)
-               {
-                    // Calculate the wheel speed based on pulse timing
-                    current_pulse_width = current_pulse_time - last_pulse_time;
-                    total_pulse_width += current_pulse_width;
-               }
+     // Speed in meters per second (m/s)
+     float speed_meters_per_sec = revolutions_per_second * wheel_circumference;
 
-               // Update the last pulse time to the current time
-               last_pulse_time = current_pulse_time;
-               pulse_count++;
+     right_prev_pulse_count = right_pulse_count;
 
-               // Print the calculated wheel speed
-               printf("1 Pulse Width: %.2f us\n", current_pulse_width);
-               printf("Total Pulse Width: %.2f us, Pulse Count: %i\n", total_pulse_width, pulse_count);
-          }
-
-          if ((current_pulse_time - start_time) >= 1000000)
-          {
-               break;
-          }
-
-          previous_state = current_state;
-     }
-
-     float wheel_speed = calculate_wheel_speed(total_pulse_width / (pulse_count - 1));
-     return wheel_speed;
+     return speed_meters_per_sec;
 }
