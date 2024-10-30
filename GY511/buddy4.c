@@ -26,8 +26,13 @@ int16_t x_buffer[SMA_WINDOW_SIZE] = {0};
 int16_t y_buffer[SMA_WINDOW_SIZE] = {0};
 int index = 0;
 
-// Debounce counters
-int forward_count = 0, left_count = 0, right_count = 0;
+
+
+
+void send_message_to_pico(const char *message) {
+    printf("%s\n", message); 
+    // logic for sending the message to the other Pico ,add below
+}
 
 // Initialize I2C and accelerometer pins
 void i2c_init_pins() {
@@ -88,26 +93,35 @@ int map_tilt_to_speed(int16_t tilt_value) {
 }
 
 // Determine and print tilt-based speed percentage
-void print_tilt_speed(int16_t filtered_x, int16_t filtered_y) {
+void send_tilt_speed(int16_t filtered_x, int16_t filtered_y) {
     int forward_speed = map_tilt_to_speed(filtered_y);
     int sideways_speed = map_tilt_to_speed(filtered_x);
 
     if (filtered_y < -MIN_TILT) {
-        printf("Forward at %d%% Speed\n", forward_speed);
+        char message[50];
+        snprintf(message, sizeof(message), "Forward at %d%% Speed", forward_speed);
+        send_message_to_pico(message);
     } else if (filtered_y > MIN_TILT) {
-        printf("Backward at %d%% Speed\n", forward_speed);
+        char message[50];
+        snprintf(message, sizeof(message), "Backward at %d%% Speed", forward_speed);
+        send_message_to_pico(message);
     }
 
     if (filtered_x < -MIN_TILT) {
-        printf("Right at %d%% Speed\n", sideways_speed);
+        char message[50];
+        snprintf(message, sizeof(message), "Right at %d%% Speed", sideways_speed);
+        send_message_to_pico(message);
     } else if (filtered_x > MIN_TILT) {
-        printf("Left at %d%% Speed\n", sideways_speed);
+        char message[50];
+        snprintf(message, sizeof(message), "Left at %d%% Speed", sideways_speed);
+        send_message_to_pico(message);
     }
 
     if (forward_speed == 0 && sideways_speed == 0) {
-        printf("Stop\n");
+        send_message_to_pico("Stop");
     }
 }
+
 int main() {
     stdio_init_all();
     i2c_init_pins();
@@ -127,8 +141,8 @@ int main() {
         // Move index for circular buffer
         index = (index + 1) % SMA_WINDOW_SIZE;
 
-        // Determine tilt direction with debouncing
-        print_tilt_speed(filtered_x, filtered_y);
+        // Determine tilt direction 
+        send_tilt_speed(filtered_x, filtered_y);
 
         sleep_ms(100);  // Small delay 
     }
