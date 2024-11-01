@@ -4,6 +4,7 @@
 #include "hardware/pwm.h"
 #include "hardware/gpio.h"
 #include "line_follower.h"
+#include "barcode_decoder.h"
 
 // Define GPIO pins Right Motor
 #define RIGHT_PWM_PIN 2    // GP2 for PWM
@@ -96,12 +97,17 @@ int main()
     gpio_pull_up(BTN_PIN);
 
     // Baseline Duty Cycle
-    float baseline_dc = 0.5;
+    float baseline_dc = 0.6;
 
     bool isMoving = false;
     setup_line_follower();
-    struct repeating_timer sampling_timer;
-    add_repeating_timer_ms(ADC_SLEEP_MS, line_follower_polling, NULL, &sampling_timer);
+    setup_barcode_decoder();
+    struct repeating_timer line_follower_polling_timer;
+    add_repeating_timer_ms(ADC_SLEEP_MS, line_follower_polling, NULL, &line_follower_polling_timer);
+
+    struct repeating_timer barcode_decoder_polling_timer;
+    add_repeating_timer_ms(ADC_SLEEP_MS, barcode_polling_function, NULL, &barcode_decoder_polling_timer);
+    
     
 
     // Set initial motor direction (forward)
@@ -110,16 +116,14 @@ int main()
 
     gpio_put(LEFT_DIR_PIN1, 0);
     gpio_put(LEFT_DIR_PIN2, 1);
-
-
-
+    
     // Control motor direction and speed
     while (true)
     {
         if (is_black_ready) {
             is_black_ready = false;
             move_signal = is_black;
-            printf("isBlack %d\n", is_black);
+            // printf("isBlack %d\n", is_black);
            
         }
         // Check if button is pressed to start movement
