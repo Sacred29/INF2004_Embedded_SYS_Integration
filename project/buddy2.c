@@ -99,6 +99,8 @@ void setup_pwm(uint gpio, float freq, float duty_cycle)
     // Enable the PWM
     pwm_set_enabled(slice_num, true);
 }
+float left_distance = 0.0;
+float right_distance = 0.0;
 
 void set_speed(float duty_cycle, uint gpio_pin)
 {
@@ -117,29 +119,56 @@ bool repeating_timer_callback(__unused struct repeating_timer *t)
     // printf("Right Wheel Speed: %.2f cm/s\n", right_speed);
     // return true;
 
+    // static int timer_count = 0; // Counter to keep track of elapsed time
+
     // printf("repeating_timer_callback triggered, isMoving = %d\n", isMoving);
     if (isMoving)
     {
         // Read wheel speeds
-        left_speed = getLeftWheelSpeed(timer_value);
-        right_speed = getRightWheelSpeed(timer_value);
+        getLeftWheelInfo(&left_speed, &left_distance);
+        getRightWheelInfo(&right_speed, &right_distance);
 
         // Display current speeds for debugging
         printf("Left Wheel Speed: %.5f cm/s\n", left_speed);
         printf("Right Wheel Speed: %.5f cm/s\n", right_speed);
 
-        // Compute PID control signals for each wheel
-        float right_control_signal = compute_pid(&right_pid, TARGET_SPEED, right_speed);
-        float left_control_signal = compute_pid(&left_pid, TARGET_SPEED, left_speed);
+        // // Compute PID control signals for each wheel
+        // float right_control_signal = compute_pid(&right_pid, TARGET_SPEED, right_speed);
+        // float left_control_signal = compute_pid(&left_pid, TARGET_SPEED, left_speed);
 
-        // Calculate and apply new duty cycles
-        float right_duty_cycle = fmin(fmax(BASELINE_DC + (right_control_signal * ADJUSTMENT_FACTOR), 0.0), 1.0);
-        float left_duty_cycle = fmin(fmax(BASELINE_DC + (left_control_signal * ADJUSTMENT_FACTOR), 0.0), 1.0);
+        // // Calculate and apply new duty cycles
+        // float right_duty_cycle = fmin(fmax(BASELINE_DC + (right_control_signal * ADJUSTMENT_FACTOR), 0.0), 1.0);
+        // float left_duty_cycle = fmin(fmax(BASELINE_DC + (left_control_signal * ADJUSTMENT_FACTOR), 0.0), 1.0);
 
-        // set_speed(right_duty_cycle, RIGHT_PWM_PIN);
-        // set_speed(left_duty_cycle, LEFT_PWM_PIN);
-        set_speed(1.0, RIGHT_PWM_PIN);
-        set_speed(1.0, LEFT_PWM_PIN);
+        // // set_speed(right_duty_cycle, RIGHT_PWM_PIN);
+        // // set_speed(left_duty_cycle, LEFT_PWM_PIN);
+        set_speed(0.80, RIGHT_PWM_PIN);
+        set_speed(0.80, LEFT_PWM_PIN);
+        printf("This is speed 80%\n");
+
+        // timer_count++; // Increment the counter each time the callback is called
+
+        // // For the first 10 seconds, run at 50% duty cycle
+        // if (timer_count <= 20)
+        // { // Assuming the callback runs every 500 ms
+        //     set_speed(0.5, RIGHT_PWM_PIN);
+        //     set_speed(0.5, LEFT_PWM_PIN);
+        //     printf("This is speed 50%%\n");
+        // }
+        // // After 10 seconds, switch to 80% duty cycle
+        // else
+        // {
+        //     set_speed(0.8, RIGHT_PWM_PIN);
+        //     set_speed(0.8, LEFT_PWM_PIN);
+        //     printf("This is speed 80%%\n");
+        // }
+
+        // // Optional: Continue PID calculations if desired
+        // left_speed = getLeftWheelSpeed(timer_value);
+        // right_speed = getRightWheelSpeed(timer_value);
+
+        // printf("Left Wheel Speed: %.5f cm/s\n", left_speed);
+        // printf("Right Wheel Speed: %.5f cm/s\n", right_speed);
     }
 
     return true; // Keep the timer running
@@ -192,8 +221,8 @@ void gpio_callback(uint gpio, uint32_t events)
 }
 
 // Define initial duty cycle, target duty cycle, and increment step
-const float initial_duty_cycle = 0.3; // Starting point, lower than baseline
-const float target_duty_cycle = 0.6;  // Baseline duty cycle
+const float initial_duty_cycle = 0.4; // Starting point, lower than baseline
+const float target_duty_cycle = 0.7;  // Baseline duty cycle
 const float ramp_increment = 0.05;    // Increment step for ramp-up
 const uint ramp_delay_ms = 100;       // Delay between increments in milliseconds
 
@@ -226,8 +255,10 @@ int main()
 
     setup_gpio_pins();
     setupWheelEncoderPins(LEFT_SENSOR_PIN, RIGHT_SENSOR_PIN);
-    gpio_set_irq_enabled_with_callback(RIGHT_SENSOR_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
-    gpio_set_irq_enabled(LEFT_SENSOR_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true);
+    // gpio_set_irq_enabled_with_callback(RIGHT_SENSOR_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+    // gpio_set_irq_enabled(LEFT_SENSOR_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true);
+    gpio_set_irq_enabled_with_callback(RIGHT_SENSOR_PIN, GPIO_IRQ_EDGE_RISE, true, &gpio_callback);
+    gpio_set_irq_enabled(LEFT_SENSOR_PIN, GPIO_IRQ_EDGE_RISE, true);
 
     // Initialize PID controllers for both wheels with appropriate values
     setup_pid(&left_pid, 0, 0, 0.0);  // Adjust Kp, Ki, Kd as needed for left motor
@@ -256,12 +287,9 @@ int main()
             sleep_ms(500); // Debounce delay
 
             // Perform ramp-up for both motors simultaneously
-            ramp_up_duty_cycle(initial_duty_cycle, target_duty_cycle, LEFT_PWM_PIN, RIGHT_PWM_PIN);
+            // ramp_up_duty_cycle(initial_duty_cycle, target_duty_cycle, LEFT_PWM_PIN, RIGHT_PWM_PIN);
 
             // Now motors have reached target speed, and PID control can take over
-
-            // set_speed(0.5, RIGHT_PWM_PIN);
-            // set_speed(0.5, LEFT_PWM_PIN);
         }
 
         // Print the state of isMoving in the main loop for debugging
