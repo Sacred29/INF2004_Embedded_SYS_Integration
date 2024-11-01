@@ -31,7 +31,7 @@ void leftWheelPulseCounting()
 
 void rightWheelPulseCounting()
 {
-     right_prev_pulse_count++;
+     right_pulse_count++;
 }
 
 float getLeftWheelSpeed(float pulse_width)
