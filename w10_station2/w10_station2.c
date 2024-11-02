@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdint.h>
+#include <string.h>
 
 #define BARCODE_BUFFER 10
 #define BTN_PIN 21
@@ -69,8 +70,8 @@ const BarcodeCharacter barcode_characters[] = {
 void line_follower(uint16_t adc_value, bool isMoving, float baseline_dc);
 void barcode_detector(uint16_t adc_value);
 void classify_bar(uint16_t duration_ms, bool is_black, uint16_t adc_reading);
-void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward);
-void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward);
+void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char * message);
+void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char * message);
 bool adc_timer_callback(repeating_timer_t *rt);
 void init_adc_timer();
 void process_adc_data(bool isMoving, float baseline_dc);
@@ -80,6 +81,8 @@ void setup_motor();
 void setup_buttons();
 void setup_pwm(uint gpio, float freq, float duty_cycle);
 void set_speed(float duty_cycle, uint gpio_pin);
+
+void add_char_to_string(char *message, char new_char);
 
 int main()
 {
@@ -242,9 +245,10 @@ void classify_bar(uint16_t duration_ms, bool is_black, uint16_t adc_reading)
         static uint8_t bar_count;
         static bool started_reading = false;
         static bool isForward;
-        barcode_start_check(index, isBlack, isWide, &start_index, &bar_count, &started_reading, &isForward);
+        static char message[BARCODE_BUFFER] = {'\0'}; 
+        barcode_start_check(index, isBlack, isWide, &start_index, &bar_count, &started_reading, &isForward, message);
 
-        barcode_read_char(isWide, &start_index, &bar_count, &started_reading, &isForward);
+        barcode_read_char(isWide, &start_index, &bar_count, &started_reading, &isForward, message);
 
         // printf("\tBlack: %d, Duration %u, reading: %u, index: %u width_threshold: %u\n", is_black, duration_ms, adc_reading, index, width_threshold);
     }
@@ -252,7 +256,7 @@ void classify_bar(uint16_t duration_ms, bool is_black, uint16_t adc_reading)
     index = (index + 1) % BARCODE_BUFFER;
 }
 
-void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward)
+void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char * message)
 {
     uint8_t read_index = (index + 1) % BARCODE_BUFFER;
     bool checksum[BARCODE_BUFFER - 1] = {false, false, true, false, true, false, false, true, false};
@@ -287,7 +291,8 @@ void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *st
                 *bar_count = 0;                                      // Reset bar_count
                 *started_reading = !*started_reading;                // Toggle started_reading
                 *is_forward = (count_forward == BARCODE_BUFFER - 1); // True if forward, false if reverse
-                printf("START (%s order):\n", *is_forward ? "normal" : "reverse");
+                *message = '\0';
+                // printf("START (%s order):\n", *is_forward ? "normal" : "reverse");
                 return; // Exit function after successful match
             }
 
@@ -300,15 +305,16 @@ void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *st
     }
 }
 
-void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward)
+void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char * message)
 {
+    
     if (*started_reading)
     {
         // printf("YES\n");
         (*bar_count)++;
         if (*bar_count == BARCODE_BUFFER)
         {
-            printf("HERE!\n");
+            // printf("HERE!\n");
 
             // Loop through each defined barcode character
             for (size_t char_idx = 0; char_idx < sizeof(barcode_characters) / sizeof(barcode_characters[0]); ++char_idx)
@@ -334,14 +340,17 @@ void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, b
                 if (count == 9)
                 { // All 9 bits matched
                     printf("Detected character: %c\n", barcode_characters[char_idx].character);
-
+                    add_char_to_string(message, barcode_characters[char_idx].character);
                     // Ensure it stops reading.
                     // Sometimes the start reading function does not catch
                     if (barcode_characters[char_idx].character == '*')
                     {
-
                         *started_reading = false;
+                        message[strlen(message) - 1] = '\0';
                         printf("SEND TO WIFI\n");
+                        // send message here.
+                        printf("Message: %s\n", message);
+                        *message = '\0';
                     }
 
                     // Reset the reading state after a successful read
@@ -430,4 +439,15 @@ void setup_pwm(uint gpio, float freq, float duty_cycle)
 void set_speed(float duty_cycle, uint gpio_pin)
 {
     pwm_set_gpio_level(gpio_pin, (uint16_t)(duty_cycle * 65535));
+}
+
+void add_char_to_string(char *message, char new_char) {
+    // Find the current length of the string
+    int length = strlen(message);
+
+    // Ensure there is room for the new character and the null terminator
+    if (length < BARCODE_BUFFER - 1) {
+        message[length] = new_char;    // Add the new character at the end
+        message[length + 1] = '\0';    // Null-terminate the string
+    } 
 }
