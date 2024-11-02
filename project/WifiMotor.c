@@ -40,6 +40,7 @@
 #define BASELINE_DC 0.60
 #define TARGET_SPEED 20.0
 #define ADJUSTMENT_FACTOR 0.04
+#define PULSES_PER_REVOLUTION 20 // Define the constant with an appropriate value
 
 // FREERTOS
 #ifndef RUN_FREERTOS_ON_CORE
@@ -72,9 +73,10 @@ float right_distance = 0.0;
 // float timer_value = 100000;
 float timer_value = 250000;
 
-
-absolute_time_t start_time, end_time;
+absolute_time_t start_time, end_time, turn_start_time, pause_start_time;
 bool isDetected = false;
+bool isTurning = false;
+bool isPostTurnPause = false;
 
 // PID Controller
 typedef struct
@@ -142,21 +144,80 @@ bool isMoving = false; // Tracks movement state
 // MARK: Timer Callback
 bool repeating_timer_callback(__unused struct repeating_timer *t)
 {
-    if (isDetected){
-        printf("isDetected = TRUE\n");
+    if (isDetected && !isTurning && !isPostTurnPause && !isMoving)
+    {
+        printf("Obstacle detected, waiting for 5 seconds...\n");
         end_time = get_absolute_time();
         uint64_t time_diff = absolute_time_diff_us(start_time, end_time);
-        printf("Time diff: %lu\n", time_diff);
-        if (time_diff > 1000000){
+        if (time_diff > 5000000) // 5 seconds in microseconds
+        {
             isDetected = false;
-            set_speed(0.8, RIGHT_PWM_PIN);
-            set_speed(0.8, LEFT_PWM_PIN);
+            turn_start_time = get_absolute_time();
+
+            // Start right-angle turn
+            gpio_put(RIGHT_DIR_PIN1, 1);
+            gpio_put(RIGHT_DIR_PIN2, 0);
+            gpio_put(LEFT_DIR_PIN1, 0);
+            gpio_put(LEFT_DIR_PIN2, 1);
+
+            set_speed(1.0, RIGHT_PWM_PIN);
+            set_speed(1.0, LEFT_PWM_PIN);
+
+            // Set isTurning to true to indicate the turn is in progress
+            isTurning = true;
+
+            printf("Starting right-angle turn...\n");
+        }
+    }
+
+    if (isTurning)
+    {
+        uint64_t turn_time_diff = absolute_time_diff_us(turn_start_time, get_absolute_time()) / 1000;
+        if (turn_time_diff >= 500) // Adjust duration for a 90-degree turn (e.g., 500 ms)
+        {
+            // Stop the motors after the turn
+            set_speed(0, RIGHT_PWM_PIN);
+            set_speed(0, LEFT_PWM_PIN);
+
+            // Reset distance traveled for the next phase by calling the reset function
+            reset_distance_traveled(&left_distance, &right_distance);
+
+            isTurning = false;
+            isPostTurnPause = true; // Move to post-turn pause phase
+            pause_start_time = get_absolute_time();
+            printf("Turn completed, pausing for 3 seconds...\n");
+        }
+    }
+
+    // 3. Post-Turn Pause (3 seconds)
+    if (isPostTurnPause)
+    {
+        uint64_t pause_time_diff = absolute_time_diff_us(pause_start_time, get_absolute_time()) / 1000;
+        if (pause_time_diff >= 3000) // 3 seconds in milliseconds
+        {
+            isPostTurnPause = false;
+            isMoving = true; // Move to straight-line movement phase
+            printf("Pause complete, starting straight-line movement...\n");
+
+            // Set direction for forward movement
+            gpio_put(RIGHT_DIR_PIN1, 0);
+            gpio_put(RIGHT_DIR_PIN2, 1);
+            gpio_put(LEFT_DIR_PIN1, 0);
+            gpio_put(LEFT_DIR_PIN2, 1);
+
+            // Start moving forward at initial speed (PID will adjust)
+            set_speed(BASELINE_DC, RIGHT_PWM_PIN);
+            set_speed(BASELINE_DC, LEFT_PWM_PIN);
         }
     }
 
     // printf("repeating_timer_callback triggered, isMoving = %d\n", isMoving);
     if (isMoving)
     {
+        gpio_put(RIGHT_DIR_PIN1, 0);
+        gpio_put(RIGHT_DIR_PIN2, 1);
+        gpio_put(LEFT_DIR_PIN1, 0);
+        gpio_put(LEFT_DIR_PIN2, 1);
 
         // Read wheel speeds
         getLeftWheelInfo(&left_speed, &left_distance);
@@ -171,8 +232,6 @@ bool repeating_timer_callback(__unused struct repeating_timer *t)
         float left_control_signal = compute_pid(&left_pid, TARGET_SPEED, left_speed);
 
         // Calculate and apply new duty cycles
-        // float right_duty_cycle = fmin(fmax(BASELINE_DC + (right_control_signal * ADJUSTMENT_FACTOR), 0.0), 1.0);
-        // float left_duty_cycle = fmin(fmax(BASELINE_DC + (left_control_signal * ADJUSTMENT_FACTOR), 0.0), 1.0);
         float right_duty_cycle = BASELINE_DC + (right_control_signal * ADJUSTMENT_FACTOR);
         float left_duty_cycle = BASELINE_DC + (left_control_signal * ADJUSTMENT_FACTOR);
 
@@ -180,9 +239,6 @@ bool repeating_timer_callback(__unused struct repeating_timer *t)
         // set_speed(left_duty_cycle, LEFT_PWM_PIN);
         set_speed(0.8, RIGHT_PWM_PIN);
         set_speed(0.8, LEFT_PWM_PIN);
-
-        // // Ultrasonic sensor
-        // sentTrigPulse(TRIG_PIN, ECHO_PIN);
 
         // Check if the robot has moved a certain distance
         if (left_distance >= 90 || right_distance >= 90)
@@ -222,7 +278,6 @@ void setup_gpio_pins()
     gpio_put(LEFT_DIR_PIN2, 1);
 }
 
-
 // MARK: GPIO Callback
 void gpio_callback(uint gpio, uint32_t events)
 {
@@ -241,9 +296,11 @@ void gpio_callback(uint gpio, uint32_t events)
         {
             printf("Distance: %.2f cm\n", object_distance);
             printf("Obstacle detected\n");
+            isDetected = true;
             // Stop the motors
             set_speed(0.0, RIGHT_PWM_PIN);
             set_speed(0.0, LEFT_PWM_PIN);
+            isMoving = false;
 
             // right angle turn
             // gpio_put(RIGHT_DIR_PIN1, 1);
@@ -254,7 +311,6 @@ void gpio_callback(uint gpio, uint32_t events)
             // set_speed(0.8, LEFT_PWM_PIN);
 
             start_time = get_absolute_time();
-            isDetected = true;
         }
     }
 }
