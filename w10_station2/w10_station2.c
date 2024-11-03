@@ -8,6 +8,32 @@
 #include <stdint.h>
 #include <string.h>
 
+// Wifi
+#include "pico/cyw43_arch.h"
+#include "lwip/ip4_addr.h" // Maybe need (need to test)
+#include "lwip/sockets.h"  // lwIP socket API for networking
+#include "FreeRTOS.h"
+#include "task.h"
+#include "message_buffer.h"
+#ifndef RUN_FREERTOS_ON_CORE
+#define RUN_FREERTOS_ON_CORE 0
+#endif
+#define configMINIMAL_STACK_SIZE (2048)
+
+#define configCHECK_FOR_STACK_OVERFLOW 2 // Enable stack overflow checking
+
+// #define SERVER_IP "172.20.10.5" // PC/Server IP address
+#define SERVER_IP "192.168.1.81"
+#define SERVER_PORT 65431 // Port no. the server is listening on
+#define WIFI_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
+#define WIFI_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE + 2048)
+#define SENSOR_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
+#define SENSOR_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE + 2048)
+
+// Message buffer
+MessageBufferHandle_t xControlWifiMessageBuffer;
+#define WIFI_MESSAGE_BUFFER_SIZE (60)
+
 #define BARCODE_BUFFER 10
 #define BTN_PIN 21
 #define BTN_PIN_INCREASE 22
@@ -70,8 +96,8 @@ const BarcodeCharacter barcode_characters[] = {
 void line_follower(uint16_t adc_value, bool isMoving, float baseline_dc);
 void barcode_detector(uint16_t adc_value);
 void classify_bar(uint16_t duration_ms, bool is_black, uint16_t adc_reading);
-void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char * message);
-void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char * message);
+void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char *message);
+void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char *message);
 bool adc_timer_callback(repeating_timer_t *rt);
 void init_adc_timer();
 void process_adc_data(bool isMoving, float baseline_dc);
@@ -84,9 +110,151 @@ void set_speed(float duty_cycle, uint gpio_pin);
 
 void add_char_to_string(char *message, char new_char);
 
-int main()
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *wifi_task) // Function to check if stack overflow occurs
+{
+    printf("Stack overflow in task: %s\n", wifi_task);
+    while (1)
+        ; // Trap the error
+}
+
+// Wifi Transmission Task
+void wifi_task(__unused void *params)
+{
+    sleep_ms(5000); // Give me time to open serial monitor
+
+    if (cyw43_arch_init()) // Init wifi driver
+    {
+        printf("Failed to initialize Wi-Fi\n");
+        return;
+    }
+    cyw43_arch_enable_sta_mode(); // Enable wifi station mode. basically tells pico's wifi chip to act as a wifi client and look for available wifi networks to connect to. once connected, router assigns ip address to the pico
+    printf("Connecting to Wi-Fi... (On client)\n");
+
+    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000)) // Wifi SSID, PW from CMakeLists.txt (where they are called from the env), authentication type and timeout length
+    {
+        printf("Failed to connect to Wi-Fi.\n");
+        exit(1); // Exit if fail to connect to wifi
+    }
+
+    else
+    {
+        printf("Connected to Wi-Fi.\n");
+    }
+
+    // Create client socket. IPv4 (AF_INET), TCP (SOCK_STREAM)
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0)
+    {
+        printf("Failed to create socket\n");
+        return;
+    }
+
+    printf("Socket created successfully\n");
+
+    int flag = 1;
+    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
+
+    struct sockaddr_in server_addr;            // Server address struct
+    server_addr.sin_family = AF_INET;          // IPv4
+    server_addr.sin_port = htons(SERVER_PORT); // Convert port number to network byte order
+
+    if (inet_aton(SERVER_IP, &server_addr.sin_addr) == 0) // inet_aton function converts Internet host address cp from the IPv4 numbers-and-dots notation into binary form, returns nonzero if the address is valid
+    {
+        printf("Invalid server IP address: %s\n", SERVER_IP);
+        close(sock);
+        return;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(5000));
+
+    // Connect to PC (Server)
+    printf("Connecting to server...\n");
+
+    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) // connect() params: int socket, const struct sockaddr *address, socklen_t address_len. successful connection returns 0, else -1 and error no.
+    {
+        printf("Failed to connect to server. errno: %d\n", errno); // Print error no. on failed connection
+        close(sock);
+        return;
+    }
+
+    printf("Connected to server successfully\n");
+
+    // Send a message to the server
+    char message[50];
+
+    while (true)
+    {
+        size_t xReceivedBytes;
+        xReceivedBytes = xMessageBufferReceive(xControlWifiMessageBuffer, (void *)message, sizeof(message), portMAX_DELAY);
+        if (xReceivedBytes > 0)
+        {
+            // Null-terminate the received message
+            message[xReceivedBytes] = '\0';
+
+            // Send message through socket
+            int bytes_sent = send(sock, message, strlen(message), 0); // params: int socket, const void *buffer, size_t length, int flags. Returns no. of bytes sent if successful, else -1 and error no.
+            if (bytes_sent < 0)
+            {
+                printf("Failed to send message\n");
+                close(sock);
+                return;
+            }
+            printf("Message sent to server: %s\n", message);
+        }
+        // vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    // Close the socket after communication
+    close(sock);
+    printf("Socket closed.\n");
+}
+
+void sensor_task(__unused void *params)
 {
 
+    while (true)
+    {
+        // handle adc data
+        if (data_ready)
+        {
+            process_adc_data(isMoving, baseline_dc);
+            data_ready = false; // Reset the flag after processing
+        }
+
+        sleep_ms(100); // Small delay
+    }
+
+    return;
+}
+
+void vLaunch(void)
+{
+    // Create Message Buffer
+    xControlWifiMessageBuffer = xMessageBufferCreate(WIFI_MESSAGE_BUFFER_SIZE);
+
+    if (!xControlWifiMessageBuffer)
+    {
+        printf("Failed to create message buffer.\n");
+        return;
+    }
+
+    // Create Task Handles
+    TaskHandle_t wifiTaskHandle;
+    TaskHandle_t sensorTaskHandle;
+
+    // Create Tasks
+    xTaskCreate(wifi_task, "WifiTask", WIFI_TASK_STACK_SIZE, NULL, WIFI_TASK_PRIORITY, &wifiTaskHandle);
+    xTaskCreate(sensor_task, "SensorTask", SENSOR_TASK_STACK_SIZE, NULL, SENSOR_TASK_PRIORITY, &sensorTaskHandle);
+
+#if NO_SYS && configUSE_CORE_AFFINITY && configNUM_CORES > 1
+    // We must bind the main task to one core (only in NO_SYS mode)
+    vTaskCoreAffinitySet(task, 1);
+#endif
+
+    vTaskStartScheduler(); // Start FreeRTOS tasks
+}
+
+int main()
+{
     stdio_init_all();
     setup_motor();
     setup_buttons();
@@ -102,6 +270,11 @@ int main()
     float baseline_dc = 0.77;
     bool isMoving = false;
 
+    /* Configure the hardware ready to run the demo. */
+    const char *rtos_name;
+    rtos_name = "FreeRTOS";
+    printf("Starting %s on core 0:\n", rtos_name);
+
     while (true)
     {
         // Check if button is pressed to start movement
@@ -110,19 +283,12 @@ int main()
             isMoving = true;
             printf("GP22 pressed, starting movement\n");
             sleep_ms(20); // Debounce delay
-            
+
             // Set initial duty cycle for both motors to start moving
             set_speed(0, RIGHT_PWM_PIN);
             set_speed(0, LEFT_PWM_PIN);
         }
-
-        // handle adc data.
-        if (data_ready)
-        {
-            process_adc_data(isMoving, baseline_dc);
-            data_ready = false; // Reset the flag after processing
-        }
-
+        vLaunch(); // Launch main task
         // handle motor logic
     }
     return 0;
@@ -131,7 +297,7 @@ int main()
 void line_follower(uint16_t adc_value, bool isMoving, float baseline_dc)
 {
     if (isMoving)
-    { 
+    {
         // black detected
         if (adc_value >= contrast_thresh)
         {
@@ -245,7 +411,7 @@ void classify_bar(uint16_t duration_ms, bool is_black, uint16_t adc_reading)
         static uint8_t bar_count;
         static bool started_reading = false;
         static bool isForward;
-        static char message[BARCODE_BUFFER] = {'\0'}; 
+        static char message[BARCODE_BUFFER] = {'\0'};
         barcode_start_check(index, isBlack, isWide, &start_index, &bar_count, &started_reading, &isForward, message);
 
         barcode_read_char(isWide, &start_index, &bar_count, &started_reading, &isForward, message);
@@ -256,7 +422,7 @@ void classify_bar(uint16_t duration_ms, bool is_black, uint16_t adc_reading)
     index = (index + 1) % BARCODE_BUFFER;
 }
 
-void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char * message)
+void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char *message)
 {
     uint8_t read_index = (index + 1) % BARCODE_BUFFER;
     bool checksum[BARCODE_BUFFER - 1] = {false, false, true, false, true, false, false, true, false};
@@ -305,9 +471,9 @@ void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *st
     }
 }
 
-void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char * message)
+void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char *message)
 {
-    
+
     if (*started_reading)
     {
         // printf("YES\n");
@@ -348,7 +514,8 @@ void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, b
                         *started_reading = false;
                         message[strlen(message) - 1] = '\0';
                         printf("SEND TO WIFI\n");
-                        // send message here.
+                        // send message here
+                        xMessageBufferSend(xControlWifiMessageBuffer, (void *)message, strlen(message), 0);
                         printf("Message: %s\n", message);
                         *message = '\0';
                     }
@@ -441,13 +608,15 @@ void set_speed(float duty_cycle, uint gpio_pin)
     pwm_set_gpio_level(gpio_pin, (uint16_t)(duty_cycle * 65535));
 }
 
-void add_char_to_string(char *message, char new_char) {
+void add_char_to_string(char *message, char new_char)
+{
     // Find the current length of the string
     int length = strlen(message);
 
     // Ensure there is room for the new character and the null terminator
-    if (length < BARCODE_BUFFER - 1) {
-        message[length] = new_char;    // Add the new character at the end
-        message[length + 1] = '\0';    // Null-terminate the string
-    } 
+    if (length < BARCODE_BUFFER - 1)
+    {
+        message[length] = new_char; // Add the new character at the end
+        message[length + 1] = '\0'; // Null-terminate the string
+    }
 }
