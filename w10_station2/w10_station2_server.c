@@ -186,7 +186,6 @@ void vLaunch(void)
 int main(void)
 {
     stdio_init_all();
-    sleep_ms(5000);
     sleep_ms(10000); // Allow time for serial monitor to connect
 
     printf("Starting server on FreeRTOS\n");
