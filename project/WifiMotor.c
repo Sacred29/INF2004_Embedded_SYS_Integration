@@ -37,9 +37,9 @@
 #define ECHO_PIN 9 // GP9 for Echo Pin
 
 // Control constants
-#define BASELINE_DC 0.60
+#define BASELINE_DC 0.70
 #define TARGET_SPEED 20.0
-#define ADJUSTMENT_FACTOR 0.04
+#define ADJUSTMENT_FACTOR 0.02
 #define PULSES_PER_REVOLUTION 20 // Define the constant with an appropriate value
 
 // FREERTOS
@@ -77,6 +77,12 @@ absolute_time_t start_time, end_time, turn_start_time, pause_start_time;
 bool isDetected = false;
 bool isTurning = false;
 bool isPostTurnPause = false;
+
+// Define initial duty cycle, target duty cycle, and increment step
+const float initial_duty_cycle = 0.5; // Starting point, lower than baseline
+const float target_duty_cycle = 0.7;  // Baseline duty cycle
+const float ramp_increment = 0.05;    // Increment step for ramp-up
+const uint ramp_delay_ms = 100;       // Delay between increments in milliseconds
 
 // PID Controller
 typedef struct
@@ -141,15 +147,15 @@ void set_speed(float duty_cycle, uint gpio_pin)
 PIDController right_pid, left_pid;
 bool isMoving = false; // Tracks movement state
 
-// MARK: Timer Callback
+// MARK: Repeating Timer Callback
 bool repeating_timer_callback(__unused struct repeating_timer *t)
 {
     if (isDetected && !isTurning && !isPostTurnPause && !isMoving)
     {
-        printf("Obstacle detected, waiting for 5 seconds...\n");
+        // printf("Obstacle detected, waiting for 3 seconds...\n");
         end_time = get_absolute_time();
         uint64_t time_diff = absolute_time_diff_us(start_time, end_time);
-        if (time_diff > 5000000) // 5 seconds in microseconds
+        if (time_diff > 3000000) // 3 seconds in microseconds
         {
             isDetected = false;
             turn_start_time = get_absolute_time();
@@ -166,14 +172,14 @@ bool repeating_timer_callback(__unused struct repeating_timer *t)
             // Set isTurning to true to indicate the turn is in progress
             isTurning = true;
 
-            printf("Starting right-angle turn...\n");
+            // printf("Starting right-angle turn...\n");
         }
     }
 
     if (isTurning)
     {
         uint64_t turn_time_diff = absolute_time_diff_us(turn_start_time, get_absolute_time()) / 1000;
-        if (turn_time_diff >= 500) // Adjust duration for a 90-degree turn (e.g., 500 ms)
+        if (turn_time_diff >= 275) // Adjust duration for a 90-degree turn (e.g., 500 ms)
         {
             // Stop the motors after the turn
             set_speed(0, RIGHT_PWM_PIN);
@@ -185,19 +191,19 @@ bool repeating_timer_callback(__unused struct repeating_timer *t)
             isTurning = false;
             isPostTurnPause = true; // Move to post-turn pause phase
             pause_start_time = get_absolute_time();
-            printf("Turn completed, pausing for 3 seconds...\n");
+            // printf("Turn completed, pausing for 3 seconds...\n");
         }
     }
 
-    // 3. Post-Turn Pause (3 seconds)
+    // 3. Post-Turn Pause (1.5 seconds)
     if (isPostTurnPause)
     {
         uint64_t pause_time_diff = absolute_time_diff_us(pause_start_time, get_absolute_time()) / 1000;
-        if (pause_time_diff >= 3000) // 3 seconds in milliseconds
+        if (pause_time_diff >= 1500) // 3 seconds in milliseconds
         {
             isPostTurnPause = false;
             isMoving = true; // Move to straight-line movement phase
-            printf("Pause complete, starting straight-line movement...\n");
+            // printf("Pause complete, starting straight-line movement...\n");
 
             // Set direction for forward movement
             gpio_put(RIGHT_DIR_PIN1, 0);
@@ -205,40 +211,45 @@ bool repeating_timer_callback(__unused struct repeating_timer *t)
             gpio_put(LEFT_DIR_PIN1, 0);
             gpio_put(LEFT_DIR_PIN2, 1);
 
-            // Start moving forward at initial speed (PID will adjust)
-            set_speed(BASELINE_DC, RIGHT_PWM_PIN);
-            set_speed(BASELINE_DC, LEFT_PWM_PIN);
+            // // Start moving forward at initial speed (PID will adjust)
+            set_speed(0.75, RIGHT_PWM_PIN);
+            set_speed(0.75, LEFT_PWM_PIN);
+
+            // can also do the ramp-up here
+            // ramp_up_duty_cycle(initial_duty_cycle, target_duty_cycle, LEFT_PWM_PIN, RIGHT_PWM_PIN);
         }
     }
 
     // printf("repeating_timer_callback triggered, isMoving = %d\n", isMoving);
     if (isMoving)
     {
-        gpio_put(RIGHT_DIR_PIN1, 0);
-        gpio_put(RIGHT_DIR_PIN2, 1);
-        gpio_put(LEFT_DIR_PIN1, 0);
-        gpio_put(LEFT_DIR_PIN2, 1);
-
         // Read wheel speeds
         getLeftWheelInfo(&left_speed, &left_distance);
         getRightWheelInfo(&right_speed, &right_distance);
 
-        // Display current speeds for debugging
-        printf("Left Wheel Speed: %.5f cm/s, %.2f\n", left_speed, left_distance);
-        printf("Right Wheel Speed: %.5f cm/s, %.2f\n", right_speed, right_distance);
+        // // Display current speeds for debugging
+        // printf("Left Wheel Speed: %.5f cm/s, %.2f\n", left_speed, left_distance);
+        // printf("Right Wheel Speed: %.5f cm/s, %.2f\n", right_speed, right_distance);
 
         // Compute PID control signals for each wheel
+        // The PID controller adjusts the motor speed to maintain the target speed
         float right_control_signal = compute_pid(&right_pid, TARGET_SPEED, right_speed);
         float left_control_signal = compute_pid(&left_pid, TARGET_SPEED, left_speed);
+        // printf("Left Control Signal: %.2f\n", left_control_signal);
+        // printf("Right Control Signal: %.2f\n", right_control_signal);
 
         // Calculate and apply new duty cycles
         float right_duty_cycle = BASELINE_DC + (right_control_signal * ADJUSTMENT_FACTOR);
         float left_duty_cycle = BASELINE_DC + (left_control_signal * ADJUSTMENT_FACTOR);
+        // float right_duty_cycle = BASELINE_DC + right_control_signal;
+        // float left_duty_cycle = BASELINE_DC + left_control_signal;
+        // printf("Left Duty Cycle: %.2f\n", left_duty_cycle);
+        // printf("Right Duty Cycle: %.2f\n\n", right_duty_cycle);
 
-        // set_speed(right_duty_cycle, RIGHT_PWM_PIN);
-        // set_speed(left_duty_cycle, LEFT_PWM_PIN);
-        set_speed(0.8, RIGHT_PWM_PIN);
-        set_speed(0.8, LEFT_PWM_PIN);
+        set_speed(right_duty_cycle, RIGHT_PWM_PIN);
+        set_speed(left_duty_cycle, LEFT_PWM_PIN);
+        // set_speed(0.7, RIGHT_PWM_PIN);
+        // set_speed(0.7, LEFT_PWM_PIN);
 
         // Check if the robot has moved a certain distance
         if (left_distance >= 90 || right_distance >= 90)
@@ -289,10 +300,10 @@ void gpio_callback(uint gpio, uint32_t events)
     {
         leftWheelPulseCounting();
     }
-    if (gpio == ECHO_PIN)
+    if (gpio == ECHO_PIN && !isTurning && !isPostTurnPause) // Avoid repeated detections during turn or pause
     {
         double object_distance = getDistance(TRIG_PIN, ECHO_PIN);
-        if (object_distance < 10 && object_distance != -1)
+        if (object_distance <= 12 && object_distance != -1 && !isDetected)
         {
             printf("Distance: %.2f cm\n", object_distance);
             printf("Obstacle detected\n");
@@ -302,24 +313,10 @@ void gpio_callback(uint gpio, uint32_t events)
             set_speed(0.0, LEFT_PWM_PIN);
             isMoving = false;
 
-            // right angle turn
-            // gpio_put(RIGHT_DIR_PIN1, 1);
-            // gpio_put(RIGHT_DIR_PIN2, 0);
-            // gpio_put(LEFT_DIR_PIN1, 0);
-            // gpio_put(LEFT_DIR_PIN2, 1);
-            // set_speed(0.8, RIGHT_PWM_PIN);
-            // set_speed(0.8, LEFT_PWM_PIN);
-
             start_time = get_absolute_time();
         }
     }
 }
-
-// Define initial duty cycle, target duty cycle, and increment step
-const float initial_duty_cycle = 0.3; // Starting point, lower than baseline
-const float target_duty_cycle = 0.6;  // Baseline duty cycle
-const float ramp_increment = 0.05;    // Increment step for ramp-up
-const uint ramp_delay_ms = 100;       // Delay between increments in milliseconds
 
 // Function to ramp up duty cycle gradually
 void ramp_up_duty_cycle(float initial_duty_cycle, float target_duty_cycle, uint gpio_pin_left, uint gpio_pin_right)
@@ -330,7 +327,7 @@ void ramp_up_duty_cycle(float initial_duty_cycle, float target_duty_cycle, uint 
     {
         set_speed(current_duty_cycle, gpio_pin_left);  // Apply current duty cycle to left motor
         set_speed(current_duty_cycle, gpio_pin_right); // Apply current duty cycle to right motor
-        // printf("Ramping up: Duty Cycle = %.2f\n", current_duty_cycle);
+        printf("Ramping up: Duty Cycle = %.2f\n", current_duty_cycle);
         current_duty_cycle = fmin(current_duty_cycle + ramp_increment, target_duty_cycle);
         sleep_ms(ramp_delay_ms); // Delay to control ramp-up speed
     }
@@ -338,7 +335,7 @@ void ramp_up_duty_cycle(float initial_duty_cycle, float target_duty_cycle, uint 
     // Ensure both wheels reach the exact target duty cycle
     set_speed(target_duty_cycle, gpio_pin_left);
     set_speed(target_duty_cycle, gpio_pin_right);
-    // printf("Ramp-up complete: Final Duty Cycle = %.2f\n", target_duty_cycle);
+    printf("Ramp-up complete: Final Duty Cycle = %.2f\n", target_duty_cycle);
 }
 
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *wifi_task) // Function to check if stack overflow occurs
@@ -459,8 +456,6 @@ void ultrasonic_task(__unused void *params)
     }
 }
 
-// MARK: - Launch Function
-// Launch function to create and manage tasks
 void vLaunch(void)
 {
     xMotorSpeedMessageBuffer = xMessageBufferCreate(WIFI_MESSAGE_BUFFER_SIZE);
@@ -497,8 +492,10 @@ int main()
 
     // Initialize PID controllers for both wheels with appropriate values
     // MARK: PID
-    setup_pid(&left_pid, 0.5, 0, 0.0);  // Adjust Kp, Ki, Kd as needed for left motor
-    setup_pid(&right_pid, 0.7, 0, 0.0); // Adjust Kp, Ki, Kd as needed for right motor
+    // setup_pid(&left_pid, 0.5, 0, 0.0);  // Adjust Kp, Ki, Kd as needed for left motor
+    // setup_pid(&right_pid, 0.7, 0, 0.0); // Adjust Kp, Ki, Kd as needed for right motor
+    setup_pid(&left_pid, 0.40, 0.01, 0); // Adjust Kp, Ki, Kd as needed for left motor 0.017 0.015
+    setup_pid(&right_pid, 0.7, 0.05, 0); // Adjust Kp, Ki, Kd as needed for right motor 0.002 0.0027 .65->P)
 
     struct repeating_timer timer;
     add_repeating_timer_us(timer_value, repeating_timer_callback, NULL, &timer);
@@ -526,8 +523,6 @@ int main()
             ramp_up_duty_cycle(initial_duty_cycle, target_duty_cycle, LEFT_PWM_PIN, RIGHT_PWM_PIN);
 
             // Now motors have reached target speed, and PID control can take over
-
-            // FreeRTOS
             vLaunch();
         }
 
