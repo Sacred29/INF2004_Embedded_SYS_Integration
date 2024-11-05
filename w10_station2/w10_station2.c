@@ -111,6 +111,7 @@ void setup_motor();
 void setup_buttons();
 void setup_pwm(uint gpio, float freq, float duty_cycle);
 void set_speed(float duty_cycle, uint gpio_pin);
+void button_isr(uint gpio, uint32_t events) ;
 
 void add_char_to_string(char *message, char new_char);
 
@@ -280,22 +281,6 @@ int main()
     printf("Starting %s on core 0:\n", rtos_name);
     printf("%d\n", data_ready);
     vLaunch();
-    while (true)
-    {
-        printf("isMoving %d\n", isMoving);
-        // Check if button is pressed to start movement
-        if (!isMoving && !gpio_get(BTN_PIN_INCREASE))
-        {
-            isMoving = true;
-            printf("GP22 pressed, starting movement\n");
-            sleep_ms(20); // Debounce delay
-
-            // Set initial duty cycle for both motors to start moving
-            set_speed(0, RIGHT_PWM_PIN);
-            set_speed(0, LEFT_PWM_PIN);
-        }
-        // handle motor logic
-    }
 
     return 0;
 }
@@ -311,6 +296,7 @@ void line_follower(uint16_t adc_value)
 
             // Move Forward
             // Maintain duty cycle for both motors
+           
             set_speed(baseline_dc, RIGHT_PWM_PIN);
             set_speed(baseline_dc, LEFT_PWM_PIN);
         }
@@ -322,6 +308,11 @@ void line_follower(uint16_t adc_value)
             set_speed(0, RIGHT_PWM_PIN);
             set_speed(0.4, LEFT_PWM_PIN);
         }
+    }
+
+    else {
+         set_speed(0, RIGHT_PWM_PIN);
+            set_speed(0, LEFT_PWM_PIN);
     }
 }
 // Timer callback to sample ADCs
@@ -587,6 +578,10 @@ void setup_buttons()
     gpio_init(BTN_PIN_INCREASE);
     gpio_set_dir(BTN_PIN_INCREASE, GPIO_IN);
     gpio_pull_up(BTN_PIN_INCREASE);
+
+     // Configure GPIO 22 as an input with an interrupt on the falling edge (button press)
+    gpio_set_irq_enabled_with_callback(BTN_PIN_INCREASE, GPIO_IRQ_EDGE_FALL, true, &button_isr);
+
 }
 
 // Function to set up the PWM
@@ -628,5 +623,19 @@ void add_char_to_string(char *message, char new_char)
     {
         message[length] = new_char; // Add the new character at the end
         message[length + 1] = '\0'; // Null-terminate the string
+    }
+}
+
+void button_isr(uint gpio, uint32_t events) {
+    static uint32_t last_interrupt_time = 0;             // Last time the ISR was triggered (for debouncing)
+    uint32_t current_time = to_ms_since_boot(get_absolute_time());  // Current time in ms
+
+    // Debounce check: Only proceed if 200 ms have passed since the last valid press
+    if ((current_time - last_interrupt_time) > 200) {    // 200 ms debounce delay
+        last_interrupt_time = current_time;              // Update last interrupt time
+
+        // Toggle the isMoving state
+        isMoving = !isMoving;
+        printf("isMoving toggled to %d\n", isMoving);    // Print the new state of isMoving
     }
 }
