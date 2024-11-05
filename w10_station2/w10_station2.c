@@ -87,11 +87,35 @@ const BarcodeCharacter barcode_characters[] = {
     {'S', {false, true, true, false, false, false, true, false, false}},
     {'U', {true, false, false, false, false, false, false, true, true}},
     {'W', {false, false, false, false, false, false, true, true, true}},
-    {'~', {false, false, false, false, false, false, false, false, false}},
-    {'~', {false, false, false, false, false, false, false, false, false}},
 
-    {'~', {false, false, false, false, false, false, false, false, false}},
-    // Add more characters and their corresponding patterns
+    {'Y', {false, false, false, false, true, false, false, true, true}},
+    {'-', {true, false, true, false, false, false, false, true, false}},
+    {' ', {false, false, true, false, false, false, true, true, false}},
+    {'/', {false, true, false, false, false, true, false, true, false}},
+    {'%', {false, true, false, true, false, true, false, false, false}},
+    
+
+    {'1', {true, false, false, false, false, true, false, false, true}},
+    {'3', {false, false, false, false, false, true, true, false, true}},
+    {'5', {false, false, false, false, true, true, false, false, true}},
+    {'7', {true, false, true, false, false, true, false, false, false}},
+    {'9', {false, false, true, false, false, true, true, false, false}},
+    {'B', {true, false, false, true, false, false, true, false, false}},
+    {'D', {true, false, false, true, true, false, false, false, false}},
+    
+    {'H', {false, false, true, true, false, false, false, false, true}},
+    {'J', {false, false, true, true, true, false, false, false, false}},
+    {'L', {true, true, false, false, false, false, true, false, false}},
+    {'N', {true, true, false, false, true, false, false, false, false}},
+    {'P', {false, true, false, false, true, false, true, false, false}},
+    {'R', {false, true, true, false, false, false, false, false, true}},
+    {'T', {false, true, true, false, true, false, false, false, false}},
+    {'V', {true, false, false, false, false, false, true, true, false}},
+    {'X', {true, false, false, false, true, false, false, true, false}},
+    {'Z', {false, false, false, false, true, false, true, true, false}},
+    {'.', {false, false, true, false, false, false, false, true, true}},
+    {'$', {false, false, false, true, false, true, false, true, false}},
+    {'+', {false, true, false, true, false, false, false, true, false}},
 };
 
 // IR Prototypes
