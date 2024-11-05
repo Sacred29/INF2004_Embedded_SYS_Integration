@@ -23,12 +23,12 @@
 #define configCHECK_FOR_STACK_OVERFLOW 2 // Enable stack overflow checking
 
 // #define SERVER_IP "172.20.10.5" // PC/Server IP address
-#define SERVER_IP "192.168.1.81"
+#define SERVER_IP "172.20.10.5"
 #define SERVER_PORT 65431 // Port no. the server is listening on
 #define WIFI_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
-#define WIFI_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE + 2048)
-#define SENSOR_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
-#define SENSOR_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE + 2048)
+#define WIFI_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE + 10240)
+#define SENSOR_TASK_PRIORITY (tskIDLE_PRIORITY + 2UL)
+#define SENSOR_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE + 10240)
 
 // Message buffer
 MessageBufferHandle_t xControlWifiMessageBuffer;
@@ -53,6 +53,8 @@ volatile bool data_ready = false;
 static uint16_t max_thresh = 0;
 static uint16_t min_thresh = 4095;
 static uint16_t contrast_thresh = 2000;
+volatile float baseline_dc = 0.77;
+volatile bool isMoving = false;
 
 typedef struct
 {
@@ -93,14 +95,16 @@ const BarcodeCharacter barcode_characters[] = {
 };
 
 // IR Prototypes
-void line_follower(uint16_t adc_value, bool isMoving, float baseline_dc);
+// void line_follower(uint16_t adc_value, bool isMoving, float baseline_dc);
+void line_follower(uint16_t adc_value);
 void barcode_detector(uint16_t adc_value);
 void classify_bar(uint16_t duration_ms, bool is_black, uint16_t adc_reading);
 void barcode_start_check(uint8_t index, bool *isBlack, bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char *message);
 void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, bool *started_reading, bool *is_forward, char *message);
 bool adc_timer_callback(repeating_timer_t *rt);
 void init_adc_timer();
-void process_adc_data(bool isMoving, float baseline_dc);
+// void process_adc_data(bool isMoving, float baseline_dc);
+void process_adc_data();
 
 // Motor Prototypes
 void setup_motor();
@@ -201,6 +205,10 @@ void wifi_task(__unused void *params)
             }
             printf("Message sent to server: %s\n", message);
         }
+        else
+        {
+            printf("Message buffer is empty");
+        }
         // vTaskDelay(pdMS_TO_TICKS(100));
     }
     // Close the socket after communication
@@ -210,17 +218,15 @@ void wifi_task(__unused void *params)
 
 void sensor_task(__unused void *params)
 {
-
     while (true)
     {
         // handle adc data
         if (data_ready)
         {
-            process_adc_data(isMoving, baseline_dc);
+            process_adc_data();
             data_ready = false; // Reset the flag after processing
         }
-
-        sleep_ms(100); // Small delay
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 
     return;
@@ -267,16 +273,16 @@ int main()
 
     // Motor variables
     // Baseline Duty Cycle
-    float baseline_dc = 0.77;
-    bool isMoving = false;
 
     /* Configure the hardware ready to run the demo. */
     const char *rtos_name;
     rtos_name = "FreeRTOS";
     printf("Starting %s on core 0:\n", rtos_name);
-
+    printf("%d\n", data_ready);
+    vLaunch();
     while (true)
     {
+        printf("isMoving %d\n", isMoving);
         // Check if button is pressed to start movement
         if (!isMoving && !gpio_get(BTN_PIN_INCREASE))
         {
@@ -288,13 +294,14 @@ int main()
             set_speed(0, RIGHT_PWM_PIN);
             set_speed(0, LEFT_PWM_PIN);
         }
-        vLaunch(); // Launch main task
         // handle motor logic
     }
+
     return 0;
 }
 
-void line_follower(uint16_t adc_value, bool isMoving, float baseline_dc)
+void line_follower(uint16_t adc_value)
+// void line_follower(uint16_t adc_value, bool isMoving, float baseline_dc)
 {
     if (isMoving)
     {
@@ -365,7 +372,7 @@ void barcode_detector(uint16_t adc_value)
 
 void classify_bar(uint16_t duration_ms, bool is_black, uint16_t adc_reading)
 {
-    // printf("Black: %d, Duration %u, reading: %u, threshold: %u\n", is_black, duration_ms, adc_reading, contrast_threshold);
+    printf("Black: %d, Duration %u, reading: %u\n", is_black, duration_ms, adc_reading);
 
     static uint16_t durations[BARCODE_BUFFER] = {0};
     static bool isBlack[BARCODE_BUFFER] = {0};
@@ -515,8 +522,9 @@ void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, b
                         message[strlen(message) - 1] = '\0';
                         printf("SEND TO WIFI\n");
                         // send message here
-                        xMessageBufferSend(xControlWifiMessageBuffer, (void *)message, strlen(message), 0);
                         printf("Message: %s\n", message);
+                        xMessageBufferSend(xControlWifiMessageBuffer, (void *)message, strlen(message), 0);
+
                         *message = '\0';
                     }
 
@@ -530,10 +538,12 @@ void barcode_read_char(bool *isWide, uint8_t *start_index, uint8_t *bar_count, b
 }
 
 // Function to process data from ADC0 and ADC1
-void process_adc_data(bool isMoving, float baseline_dc)
+// void process_adc_data(bool isMoving, float baseline_dc)
+void process_adc_data()
 {
     // adc data values are global volatile
-    line_follower(adc0_data, isMoving, baseline_dc);
+    // line_follower(adc0_data, isMoving, baseline_dc);
+    line_follower(adc0_data);
 
     barcode_detector(adc1_data);
 }
