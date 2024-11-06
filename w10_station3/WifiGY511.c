@@ -41,15 +41,12 @@
 
 #define configCHECK_FOR_STACK_OVERFLOW 2 // Enable stack overflow checking
 
-// #define SERVER_IP "172.20.10.5" // PC/Server IP address
-#define SERVER_IP "192.168.1.81"
-#define SERVER_PORT 65432 // Port no. the server is listening on
+#define SERVER_IP "192.168.1.81" // Server IP address
+#define SERVER_PORT 65432        // Port no. the server is listening on
 
 #define WIFI_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
-// #define WIFI_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE + 10240) // Increased stack size for FreeRTOS task
 #define WIFI_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE + 2048)
 #define SENSOR_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
-// #define SENSOR_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE + 10240) // Increased stack size for FreeRTOS task
 #define SENSOR_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE + 2048)
 // Message buffer
 MessageBufferHandle_t xControlWifiMessageBuffer;
@@ -138,32 +135,27 @@ void send_tilt_speed(int16_t filtered_x, int16_t filtered_y)
     if (filtered_y < -MIN_TILT)
     {
         snprintf(message, sizeof(message), "Forward at %d%% Speed|", forward_speed);
-        // send_message_to_pico(message);
         xMessageBufferSend(xControlWifiMessageBuffer, (void *)message, strlen(message), 0);
     }
     else if (filtered_y > MIN_TILT)
     {
         snprintf(message, sizeof(message), "Backward at %d%% Speed|", forward_speed);
-        // send_message_to_pico(message);
         xMessageBufferSend(xControlWifiMessageBuffer, (void *)message, strlen(message), 0);
     }
 
     if (filtered_x < -MIN_TILT)
     {
         snprintf(message, sizeof(message), "Right at %d%% Speed|", sideways_speed);
-        // send_message_to_pico(message);
         xMessageBufferSend(xControlWifiMessageBuffer, (void *)message, strlen(message), 0);
     }
     else if (filtered_x > MIN_TILT)
     {
         snprintf(message, sizeof(message), "Left at %d%% Speed|", sideways_speed);
-        // send_message_to_pico(message);
         xMessageBufferSend(xControlWifiMessageBuffer, (void *)message, strlen(message), 0);
     }
 
     if (forward_speed == 0 && sideways_speed == 0)
     {
-        // send_message_to_pico("Stop");
         strcpy(message, "Stop|");
         xMessageBufferSend(xControlWifiMessageBuffer, (void *)message, strlen(message), 0);
     }
@@ -263,24 +255,6 @@ void wifi_task(__unused void *params)
         }
         // vTaskDelay(pdMS_TO_TICKS(100));
     }
-
-    // // Send test messages w/o GY511s
-    // for (int i = 1; i <= 5; i++)
-    // { // Send 5 test messages
-    //     char message[50];
-    //     snprintf(message, sizeof(message), "Test message %d", i);
-
-    //     int bytes_sent = send(sock, message, strlen(message), 0);
-    //     if (bytes_sent < 0)
-    //     {
-    //         printf("Failed to send message\n");
-    //         break;
-    //     }
-
-    //     printf("Message sent to server: %s\n", message);
-
-    //     sleep_ms(2000); // Delay before sending the next message
-    // }
 
     // Close the socket after communication
     close(sock);
