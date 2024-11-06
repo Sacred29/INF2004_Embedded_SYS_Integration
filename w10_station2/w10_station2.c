@@ -93,7 +93,6 @@ const BarcodeCharacter barcode_characters[] = {
     {' ', {false, false, true, false, false, false, true, true, false}},
     {'/', {false, true, false, false, false, true, false, true, false}},
     {'%', {false, true, false, true, false, true, false, false, false}},
-    
 
     {'1', {true, false, false, false, false, true, false, false, true}},
     {'3', {false, false, false, false, false, true, true, false, true}},
@@ -102,7 +101,7 @@ const BarcodeCharacter barcode_characters[] = {
     {'9', {false, false, true, false, false, true, true, false, false}},
     {'B', {true, false, false, true, false, false, true, false, false}},
     {'D', {true, false, false, true, true, false, false, false, false}},
-    
+
     {'H', {false, false, true, true, false, false, false, false, true}},
     {'J', {false, false, true, true, true, false, false, false, false}},
     {'L', {true, true, false, false, false, false, true, false, false}},
@@ -234,7 +233,6 @@ void wifi_task(__unused void *params)
         {
             printf("Message buffer is empty");
         }
-        // vTaskDelay(pdMS_TO_TICKS(100));
     }
     // Close the socket after communication
     close(sock);

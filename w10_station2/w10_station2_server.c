@@ -27,7 +27,7 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *server_task) // Fun
         ; // Trap the error
 }
 
-// Print each client message as a new line to match client-side print
+// Handle client messages to print
 void handle_client(int client_socket)
 {
     char buffer[BUFFER_SIZE];
@@ -142,26 +142,6 @@ void server_task(__unused void *params)
         {
 
             handle_client(client_fd);
-            //     char recv_buffer[BUFFER_SIZE] = {0};
-            //     int bytes_received = recv(client_fd, recv_buffer, BUFFER_SIZE - 1, 0);
-
-            //     // Check for disconnection or error
-            //     if (bytes_received <= 0)
-            //     {
-            //         if (bytes_received == 0)
-            //         {
-            //             printf("Client disconnected.\n");
-            //         }
-            //         else
-            //         {
-            //             printf("Failed to receive message from client.\n");
-            //         }
-            //         break;
-            //     }
-
-            //     // Print received message
-            //     recv_buffer[bytes_received] = '\0';
-            //     printf("Message received from client: %s\n", recv_buffer);
         }
 
         // Close the client socket
