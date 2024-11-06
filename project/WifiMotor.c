@@ -37,7 +37,7 @@
 #define ECHO_PIN 9 // GP9 for Echo Pin
 
 // Control constants
-#define BASELINE_DC 0.70
+#define BASELINE_DC 0.65
 #define TARGET_SPEED 20.0
 #define ADJUSTMENT_FACTOR 0.02
 #define PULSES_PER_REVOLUTION 20 // Define the constant with an appropriate value
@@ -83,6 +83,10 @@ const float initial_duty_cycle = 0.5; // Starting point, lower than baseline
 const float target_duty_cycle = 0.7;  // Baseline duty cycle
 const float ramp_increment = 0.05;    // Increment step for ramp-up
 const uint ramp_delay_ms = 100;       // Delay between increments in milliseconds
+
+// Global PID controllers and moving state
+PIDController right_pid, left_pid;
+bool isMoving = false; // Tracks movement state
 
 // PID Controller
 typedef struct
@@ -142,10 +146,6 @@ void set_speed(float duty_cycle, uint gpio_pin)
 {
     pwm_set_gpio_level(gpio_pin, (uint16_t)(duty_cycle * 65535));
 }
-
-// Global PID controllers and moving state
-PIDController right_pid, left_pid;
-bool isMoving = false; // Tracks movement state
 
 // MARK: Repeating Timer Callback
 bool repeating_timer_callback(__unused struct repeating_timer *t)
@@ -494,7 +494,7 @@ int main()
     // MARK: PID
     // setup_pid(&left_pid, 0.5, 0, 0.0);  // Adjust Kp, Ki, Kd as needed for left motor
     // setup_pid(&right_pid, 0.7, 0, 0.0); // Adjust Kp, Ki, Kd as needed for right motor
-    setup_pid(&left_pid, 0.40, 0.01, 0); // Adjust Kp, Ki, Kd as needed for left motor 0.017 0.015
+    setup_pid(&left_pid, 0.40, 0.013, 0); // Adjust Kp, Ki, Kd as needed for left motor 0.017 0.015
     setup_pid(&right_pid, 0.7, 0.05, 0); // Adjust Kp, Ki, Kd as needed for right motor 0.002 0.0027 .65->P)
 
     struct repeating_timer timer;
