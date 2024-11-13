@@ -42,6 +42,13 @@
 #define ADJUSTMENT_FACTOR 0.02
 #define PULSES_PER_REVOLUTION 20 // Define the constant with an appropriate value
 
+// Gesture commands
+#define GESTURE_FORWARD 'F'
+#define GESTURE_REVERSE 'B'
+#define GESTURE_LEFT 'L'
+#define GESTURE_RIGHT 'R'
+#define GESTURE_STOP 'S'
+
 // FREERTOS
 #ifndef RUN_FREERTOS_ON_CORE
 #define RUN_FREERTOS_ON_CORE 0
@@ -61,7 +68,9 @@ MessageBufferHandle_t xMotorSpeedMessageBuffer;
 #define WIFI_MESSAGE_BUFFER_SIZE (60)
 
 // Initialize button pin
-const uint BTN_PIN_START = 22;
+const uint BTN_PIN_START = 21;
+const uint BTN_PIN_LEFT = 20;
+const uint BTN_PIN_RIGHT = 22;
 
 float left_speed = 0.0;
 float right_speed = 0.0;
@@ -75,18 +84,12 @@ float timer_value = 250000;
 
 absolute_time_t start_time, end_time, turn_start_time, pause_start_time;
 bool isDetected = false;
-bool isTurning = false;
-bool isPostTurnPause = false;
 
 // Define initial duty cycle, target duty cycle, and increment step
 const float initial_duty_cycle = 0.5; // Starting point, lower than baseline
 const float target_duty_cycle = 0.7;  // Baseline duty cycle
 const float ramp_increment = 0.05;    // Increment step for ramp-up
-const uint ramp_delay_ms = 100;       // Delay between increments in milliseconds
-
-// Global PID controllers and moving state
-PIDController right_pid, left_pid;
-bool isMoving = false; // Tracks movement state
+const uint ramp_delay_ms = 250;       // Delay between increments in milliseconds
 
 // PID Controller
 typedef struct
@@ -97,6 +100,39 @@ typedef struct
     float integral;
     float prev_error;
 } PIDController;
+
+// Global PID controllers and moving state
+PIDController right_pid, left_pid;
+bool isMoving = false; // Tracks movement state
+
+// Movement states using defines
+#define STATE_STOP 0
+#define STATE_FORWARD 1
+#define STATE_REVERSE 2
+#define STATE_TURN_LEFT 3
+#define STATE_TURN_RIGHT 4
+
+// Instead of MovementState, use int
+int currentState = STATE_STOP;
+
+void ramp_up_duty_cycle(float initial_duty_cycle, float target_duty_cycle, uint gpio_pin_left, uint gpio_pin_right);
+void set_movement_state(int new_state);
+void set_gesture_controls(bool right_forward, bool left_forward);
+void process_gesture(char gesture);
+void gpio_callback(uint gpio, uint32_t events);
+void setup_gpio_pins();
+void setup_pwm(uint gpio, float freq, float duty_cycle);
+void set_speed(float duty_cycle, uint gpio_pin);
+
+// // PID Controller
+// typedef struct
+// {
+//     float Kp;
+//     float Ki;
+//     float Kd;
+//     float integral;
+//     float prev_error;
+// } PIDController;
 
 void setup_pid(PIDController *pid, float Kp, float Ki, float Kd)
 {
@@ -147,119 +183,91 @@ void set_speed(float duty_cycle, uint gpio_pin)
     pwm_set_gpio_level(gpio_pin, (uint16_t)(duty_cycle * 65535));
 }
 
+// MARK: Gesture Controls
+void set_motor_direction(bool right_forward, bool left_forward)
+{
+    gpio_put(RIGHT_DIR_PIN1, right_forward ? 0 : 1);
+    gpio_put(RIGHT_DIR_PIN2, right_forward ? 1 : 0);
+    gpio_put(LEFT_DIR_PIN1, left_forward ? 0 : 1);
+    gpio_put(LEFT_DIR_PIN2, left_forward ? 1 : 0);
+}
+
+void process_gesture(char gesture)
+{
+    switch (gesture)
+    {
+    case GESTURE_FORWARD:
+        set_movement_state(STATE_FORWARD);
+        break;
+    case GESTURE_REVERSE:
+        set_movement_state(STATE_REVERSE);
+        break;
+    case GESTURE_LEFT:
+        set_movement_state(STATE_TURN_LEFT);
+        break;
+    case GESTURE_RIGHT:
+        set_movement_state(STATE_TURN_RIGHT);
+        break;
+    case GESTURE_STOP:
+        set_movement_state(STATE_STOP);
+        break;
+    }
+}
+
+void set_movement_state(int new_state)
+{
+    currentState = new_state;
+
+    switch (new_state)
+    {
+    case STATE_FORWARD:
+        printf("Moving Forward\n");
+        set_motor_direction(true, true);
+        break;
+    case STATE_REVERSE:
+        printf("Moving Backward\n");
+        set_motor_direction(false, false);
+        break;
+    case STATE_TURN_LEFT:
+        printf("Turning Left\n");
+        set_motor_direction(true, false);
+        break;
+    case STATE_TURN_RIGHT:
+        printf("Turning Right\n");
+        set_motor_direction(false, true);
+        break;
+    case STATE_STOP:
+        printf("Stopping\n");
+        set_speed(0, RIGHT_PWM_PIN);
+        set_speed(0, LEFT_PWM_PIN);
+        break;
+    }
+}
+
 // MARK: Repeating Timer Callback
 bool repeating_timer_callback(__unused struct repeating_timer *t)
 {
-    if (isDetected && !isTurning && !isPostTurnPause && !isMoving)
-    {
-        // printf("Obstacle detected, waiting for 3 seconds...\n");
-        end_time = get_absolute_time();
-        uint64_t time_diff = absolute_time_diff_us(start_time, end_time);
-        if (time_diff > 3000000) // 3 seconds in microseconds
-        {
-            isDetected = false;
-            turn_start_time = get_absolute_time();
-
-            // Start right-angle turn
-            gpio_put(RIGHT_DIR_PIN1, 1);
-            gpio_put(RIGHT_DIR_PIN2, 0);
-            gpio_put(LEFT_DIR_PIN1, 0);
-            gpio_put(LEFT_DIR_PIN2, 1);
-
-            set_speed(1.0, RIGHT_PWM_PIN);
-            set_speed(1.0, LEFT_PWM_PIN);
-
-            // Set isTurning to true to indicate the turn is in progress
-            isTurning = true;
-
-            // printf("Starting right-angle turn...\n");
-        }
-    }
-
-    if (isTurning)
-    {
-        uint64_t turn_time_diff = absolute_time_diff_us(turn_start_time, get_absolute_time()) / 1000;
-        if (turn_time_diff >= 275) // Adjust duration for a 90-degree turn (e.g., 500 ms)
-        {
-            // Stop the motors after the turn
-            set_speed(0, RIGHT_PWM_PIN);
-            set_speed(0, LEFT_PWM_PIN);
-
-            // Reset distance traveled for the next phase by calling the reset function
-            reset_distance_traveled(&left_distance, &right_distance);
-
-            isTurning = false;
-            isPostTurnPause = true; // Move to post-turn pause phase
-            pause_start_time = get_absolute_time();
-            // printf("Turn completed, pausing for 3 seconds...\n");
-        }
-    }
-
-    // 3. Post-Turn Pause (1.5 seconds)
-    if (isPostTurnPause)
-    {
-        uint64_t pause_time_diff = absolute_time_diff_us(pause_start_time, get_absolute_time()) / 1000;
-        if (pause_time_diff >= 1500) // 3 seconds in milliseconds
-        {
-            isPostTurnPause = false;
-            isMoving = true; // Move to straight-line movement phase
-            // printf("Pause complete, starting straight-line movement...\n");
-
-            // Set direction for forward movement
-            gpio_put(RIGHT_DIR_PIN1, 0);
-            gpio_put(RIGHT_DIR_PIN2, 1);
-            gpio_put(LEFT_DIR_PIN1, 0);
-            gpio_put(LEFT_DIR_PIN2, 1);
-
-            // // Start moving forward at initial speed (PID will adjust)
-            set_speed(0.75, RIGHT_PWM_PIN);
-            set_speed(0.75, LEFT_PWM_PIN);
-
-            // can also do the ramp-up here
-            // ramp_up_duty_cycle(initial_duty_cycle, target_duty_cycle, LEFT_PWM_PIN, RIGHT_PWM_PIN);
-        }
-    }
-
-    // printf("repeating_timer_callback triggered, isMoving = %d\n", isMoving);
-    if (isMoving)
+    if (currentState != STATE_STOP)
     {
         // Read wheel speeds
         getLeftWheelInfo(&left_speed, &left_distance);
         getRightWheelInfo(&right_speed, &right_distance);
 
-        // // Display current speeds for debugging
-        // printf("Left Wheel Speed: %.5f cm/s, %.2f\n", left_speed, left_distance);
-        // printf("Right Wheel Speed: %.5f cm/s, %.2f\n", right_speed, right_distance);
-
         // Compute PID control signals for each wheel
         // The PID controller adjusts the motor speed to maintain the target speed
         float right_control_signal = compute_pid(&right_pid, TARGET_SPEED, right_speed);
         float left_control_signal = compute_pid(&left_pid, TARGET_SPEED, left_speed);
-        // printf("Left Control Signal: %.2f\n", left_control_signal);
-        // printf("Right Control Signal: %.2f\n", right_control_signal);
 
         // Calculate and apply new duty cycles
         float right_duty_cycle = BASELINE_DC + (right_control_signal * ADJUSTMENT_FACTOR);
         float left_duty_cycle = BASELINE_DC + (left_control_signal * ADJUSTMENT_FACTOR);
-        // float right_duty_cycle = BASELINE_DC + right_control_signal;
-        // float left_duty_cycle = BASELINE_DC + left_control_signal;
-        // printf("Left Duty Cycle: %.2f\n", left_duty_cycle);
-        // printf("Right Duty Cycle: %.2f\n\n", right_duty_cycle);
+
+        // Constrain duty cycles
+        right_duty_cycle = right_duty_cycle > 1.0f ? 1.0f : (right_duty_cycle < 0.0f ? 0.0f : right_duty_cycle);
+        left_duty_cycle = left_duty_cycle > 1.0f ? 1.0f : (left_duty_cycle < 0.0f ? 0.0f : left_duty_cycle);
 
         set_speed(right_duty_cycle, RIGHT_PWM_PIN);
         set_speed(left_duty_cycle, LEFT_PWM_PIN);
-        // set_speed(0.7, RIGHT_PWM_PIN);
-        // set_speed(0.7, LEFT_PWM_PIN);
-
-        // Check if the robot has moved a certain distance
-        if (left_distance >= 90 || right_distance >= 90)
-        {
-            set_speed(0, RIGHT_PWM_PIN);
-            set_speed(0, LEFT_PWM_PIN);
-            isMoving = false;
-            // Display current speeds for debugging
-            printf("STOPPPP\n");
-        }
     }
 
     return true; // Keep the timer running
@@ -271,6 +279,14 @@ void setup_gpio_pins()
     gpio_init(BTN_PIN_START);
     gpio_set_dir(BTN_PIN_START, GPIO_IN);
     gpio_pull_up(BTN_PIN_START);
+
+    gpio_init(BTN_PIN_LEFT);
+    gpio_set_dir(BTN_PIN_LEFT, GPIO_IN);
+    gpio_pull_up(BTN_PIN_LEFT);
+
+    gpio_init(BTN_PIN_RIGHT);
+    gpio_set_dir(BTN_PIN_RIGHT, GPIO_IN);
+    gpio_pull_up(BTN_PIN_RIGHT);
 
     // Initialize and set direction control pins for the right motor
     gpio_init(RIGHT_DIR_PIN1);
@@ -300,7 +316,7 @@ void gpio_callback(uint gpio, uint32_t events)
     {
         leftWheelPulseCounting();
     }
-    if (gpio == ECHO_PIN && !isTurning && !isPostTurnPause) // Avoid repeated detections during turn or pause
+    if (gpio == ECHO_PIN) // Avoid repeated detections during turn or pause
     {
         double object_distance = getDistance(TRIG_PIN, ECHO_PIN);
         if (object_distance <= 12 && object_distance != -1 && !isDetected)
@@ -309,11 +325,11 @@ void gpio_callback(uint gpio, uint32_t events)
             printf("Obstacle detected\n");
             isDetected = true;
             // Stop the motors
-            set_speed(0.0, RIGHT_PWM_PIN);
-            set_speed(0.0, LEFT_PWM_PIN);
-            isMoving = false;
-
-            start_time = get_absolute_time();
+            set_movement_state(STATE_STOP);
+        }
+        else
+        {
+            isDetected = false;
         }
     }
 }
@@ -482,8 +498,6 @@ int main()
     stdio_init_all();
     sleep_ms(5000);
     printf("Hello Motor Control\n");
-    printf("Press and hold GP21 to change direction\n");
-    printf("Press GP22 to start\n");
 
     setup_gpio_pins();
     setupWheelEncoderPins(LEFT_SENSOR_PIN, RIGHT_SENSOR_PIN);
@@ -492,10 +506,8 @@ int main()
 
     // Initialize PID controllers for both wheels with appropriate values
     // MARK: PID
-    // setup_pid(&left_pid, 0.5, 0, 0.0);  // Adjust Kp, Ki, Kd as needed for left motor
-    // setup_pid(&right_pid, 0.7, 0, 0.0); // Adjust Kp, Ki, Kd as needed for right motor
     setup_pid(&left_pid, 0.40, 0.013, 0); // Adjust Kp, Ki, Kd as needed for left motor 0.017 0.015
-    setup_pid(&right_pid, 0.7, 0.05, 0); // Adjust Kp, Ki, Kd as needed for right motor 0.002 0.0027 .65->P)
+    setup_pid(&right_pid, 0.7, 0.05, 0);  // Adjust Kp, Ki, Kd as needed for right motor 0.002 0.0027 .65->P)
 
     struct repeating_timer timer;
     add_repeating_timer_us(timer_value, repeating_timer_callback, NULL, &timer);
@@ -504,29 +516,35 @@ int main()
     gpio_set_irq_enabled(ECHO_PIN, GPIO_IRQ_EDGE_RISE, true);
 
     // Set up PWM on GPIO2 and GPIO8
-    setup_pwm(RIGHT_PWM_PIN, 100.0f, 0.0f); // 100 Hz frequency, 50% duty cycle
-    setup_pwm(LEFT_PWM_PIN, 100.0f, 0.0f);  // 100 Hz frequency, 50% duty cycle
+    setup_pwm(RIGHT_PWM_PIN, 100.0f, 0.0f);
+    setup_pwm(LEFT_PWM_PIN, 100.0f, 0.0f);
 
     // Control motor direction
     while (true)
     {
-        // Check if button is pressed
-        // Wait until GP22 (BTN_PIN_INCREASE) is pressed to start moving
-        if (!isMoving && !gpio_get(BTN_PIN_START))
+        // Check if the start button is pressed (simulate forward gesture)
+        if (gpio_get(BTN_PIN_START) == 0)
         {
-            isMoving = true;
-            printf("GP22 pressed, starting movement\n");
-            printf("isMoving = %d\n", isMoving);
-            sleep_ms(500); // Debounce delay
-
-            // Perform ramp-up for both motors simultaneously
-            ramp_up_duty_cycle(initial_duty_cycle, target_duty_cycle, LEFT_PWM_PIN, RIGHT_PWM_PIN);
-
-            // Now motors have reached target speed, and PID control can take over
-            vLaunch();
+            printf("Start Button Pressed: Moving Forward\n");
+            process_gesture(GESTURE_FORWARD);
+            sleep_ms(300); // Debounce delay
         }
 
-        // sleep_ms(100);
+        // Check if the left button is pressed (simulate left turn gesture)
+        if (gpio_get(BTN_PIN_LEFT) == 0)
+        {
+            printf("Left Button Pressed: Turning Left\n");
+            process_gesture(GESTURE_LEFT);
+            sleep_ms(300); // Debounce delay
+        }
+
+        // Check if the right button is pressed (simulate right turn gesture)
+        if (gpio_get(BTN_PIN_RIGHT) == 0)
+        {
+            printf("Right Button Pressed: Turning Right\n");
+            process_gesture(GESTURE_RIGHT);
+            sleep_ms(300); // Debounce delay
+        }
     }
 
     return 0;
