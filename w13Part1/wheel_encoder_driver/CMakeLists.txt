@@ -1,0 +1,5 @@
+add_library(wheel_encoder_driver wheel_encoder_driver.h wheel_encoder_driver.c)
+
+target_link_libraries(wheel_encoder_driver pico_stdlib hardware_gpio hardware_timer)
+
+target_include_directories(wheel_encoder_driver PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
