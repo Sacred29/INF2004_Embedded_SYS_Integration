@@ -25,11 +25,9 @@ target_link_libraries(RemoteControl
 # enable usb output
 pico_enable_stdio_usb(RemoteControl 1)
 pico_add_extra_outputs(RemoteControl)
-
 add_executable(Car 
         Car.c
         )
-
 target_compile_definitions(Car PRIVATE
         WIFI_SSID=\"$ENV{WIFI_SSID}\"
         WIFI_PASSWORD=\"$ENV{WIFI_PASSWORD}\"
@@ -53,14 +51,11 @@ target_link_libraries(Car
         pico_lwip_iperf
         FreeRTOS-Kernel-Heap4 # FreeRTOS kernel and dynamic heap
         )
-
 # # enable usb output
 pico_enable_stdio_usb(Car 1)
 pico_enable_stdio_uart(Car 0)
-
 # create map/bin/hex file etc.
 pico_add_extra_outputs(Car)
-
 add_executable(TelemetryServer
         TelemetryServer.c
         )

@@ -31,7 +31,7 @@
 #define configMINIMAL_STACK_SIZE (2048)
 #define configCHECK_FOR_STACK_OVERFLOW 2 // Enable stack overflow checking
 // #define SERVER_IP "172.20.10.5" // PC/Server IP address
-#define CAR_IP "172.20.10.8"
+#define CAR_IP "172.20.10.6"
 #define CAR_PORT 65431
 
 #define WIFI_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)

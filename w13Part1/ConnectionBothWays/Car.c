@@ -52,9 +52,9 @@
 // #define SERVER_IP "172.20.10.7"          // PC/Server IP address
 // #define SERVER_PORT 65439                // Port no. the server is listening on
 #define RECEIVE_PORT 65431
-#define SEND_IP "172.20.10.5"
+#define SEND_IP "172.20.10.8"
 #define SEND_PORT 65439
-#define MY_IP "172.20.10.8"
+#define MY_IP "172.20.10.6"
 
 #define WIFI_RECEIVE_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
 #define WIFI_RECEIVE_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE + 10240) // Increased stack size for FreeRTOS task
@@ -300,6 +300,8 @@ bool repeating_timer_callback(__unused struct repeating_timer *t)
         right_duty_cycle = right_duty_cycle > 1.0f ? 1.0f : (right_duty_cycle < 0.0f ? 0.0f : right_duty_cycle);
         left_duty_cycle = left_duty_cycle > 1.0f ? 1.0f : (left_duty_cycle < 0.0f ? 0.0f : left_duty_cycle);
 
+        printf("Right Duty Cycle: %.2f | Left Duty Cycle: %.2f\n", right_duty_cycle, left_duty_cycle);
+
         set_speed(right_duty_cycle, RIGHT_PWM_PIN);
         set_speed(left_duty_cycle, LEFT_PWM_PIN);
     }
@@ -353,7 +355,7 @@ void gpio_callback(uint gpio, uint32_t events)
     if (gpio == ECHO_PIN) // Avoid repeated detections during turn or pause
     {
         double object_distance = getDistance(TRIG_PIN, ECHO_PIN);
-        printf("Distance: %.2f cm\n", object_distance);
+        // printf("Distance: %.2f cm\n", object_distance);
         if (object_distance <= 12 && object_distance != -1 && !isDetected)
         {
 
@@ -398,21 +400,20 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *wifi_task) // Funct
 
 // MARK: - Ultrasonic
 
-// void ultrasonic_task(__unused void *params)
-// {
+void ultrasonic_task(__unused void *params)
+{
+    while (1)
+    {
+        // Read ultrasonic sensor data
+        // double distance = getDistance(TRIG_PIN, ECHO_PIN);
+        // printf("Distance: %.2f cm\n", distance);
 
-//     while (1)
-//     {
-//         // Read ultrasonic sensor data
-//         // double distance = getDistance(TRIG_PIN, ECHO_PIN);
-//         // printf("Distance: %.2f cm\n", distance);
-
-//         sentTrigPulse(TRIG_PIN, ECHO_PIN);
-//         printf("Sent Trig Pulse\n");
-//         printf("After 1st send\n");
-//         vTaskDelay(pdMS_TO_TICKS(100));
-//     }
-// }
+        // printf("Sent Trig Pulse\n");
+        sentTrigPulse(TRIG_PIN, ECHO_PIN);
+        // printf("After 1st send\n");
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
 
 // void read_ultrasonic()
 // {
@@ -829,11 +830,12 @@ void vLaunch(void)
     // TaskHandle_t ultrasonicTaskHandle;
     TaskHandle_t wifiReceiveTaskHandle;
     TaskHandle_t wifiSendTaskHandle;
+    TaskHandle_t ultrasonicTaskHandle;
 
-    // if (xTaskCreate(ultrasonic_task, "UltrasonicTask", ULTRASONIC_TASK_STACK_SIZE, NULL, ULTRASONIC_TASK_PRIORITY, &ultrasonicTaskHandle) != pdPASS)
-    // {
-    //     printf("Failed to create Ultrasonic Task\n");
-    // }
+    if (xTaskCreate(ultrasonic_task, "UltrasonicTask", ULTRASONIC_TASK_STACK_SIZE, NULL, ULTRASONIC_TASK_PRIORITY, &ultrasonicTaskHandle) != pdPASS)
+    {
+        printf("Failed to create Ultrasonic Task\n");
+    }
 
     // if (xTaskCreate(wifi_receive_task, "WiFiReceiveTask", WIFI_RECEIVE_TASK_STACK_SIZE, NULL, WIFI_RECEIVE_TASK_PRIORITY, &wifiReceiveTaskHandle) != pdPASS)
     // {
@@ -850,6 +852,7 @@ void vLaunch(void)
         printf("Failed to create WiFi Send/Receive Task\n");
     }
 
+    printf("VLaunch!! Complete\n");
     vTaskStartScheduler();
 }
 
@@ -864,15 +867,17 @@ int main()
     gpio_set_irq_enabled_with_callback(RIGHT_SENSOR_PIN, GPIO_IRQ_EDGE_RISE, true, &gpio_callback);
     gpio_set_irq_enabled(LEFT_SENSOR_PIN, GPIO_IRQ_EDGE_RISE, true);
 
+    setupUltrasonicPins(TRIG_PIN, ECHO_PIN);
+    gpio_set_irq_enabled(ECHO_PIN, GPIO_IRQ_EDGE_RISE, true);
+    printf("Ultrasonic setup complete\n");
+
     // Initialize PID controllers for both wheels with appropriate values
     // MARK: PID
-    setup_pid(&left_pid, 0.40, 0.013, 0); // Adjust Kp, Ki, Kd as needed for left motor 0.017 0.015
-    setup_pid(&right_pid, 0.7, 0.05, 0);  // Adjust Kp, Ki, Kd as needed for right motor 0.002 0.0027 .65->P)
+    setup_pid(&left_pid, 0, 0, 0.001);
+    setup_pid(&right_pid, 0, 0, 0.001);
 
     struct repeating_timer timer;
     add_repeating_timer_us(timer_value, repeating_timer_callback, NULL, &timer);
-    setupUltrasonicPins(TRIG_PIN, ECHO_PIN);
-    gpio_set_irq_enabled(ECHO_PIN, GPIO_IRQ_EDGE_RISE, true);
 
     // Set up PWM on GPIO2 and GPIO8
     setup_pwm(RIGHT_PWM_PIN, 100.0f, 0.0f);
