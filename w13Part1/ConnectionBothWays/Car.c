@@ -21,7 +21,7 @@
 #include "message_buffer.h"
 
 // Define GPIO pins Right Motor
-#define RIGHT_PWM_PIN 2    // GP2 for PWM
+#define RIGHT_PWM_PIN 3    // GP2 for PWM
 #define RIGHT_DIR_PIN1 0   // GP0 for direction
 #define RIGHT_DIR_PIN2 1   // GP1 for direction
 #define RIGHT_SENSOR_PIN 4 // GPIO for the right IR sensor
@@ -37,8 +37,8 @@
 #define ECHO_PIN 9 // GP9 for Echo Pin
 
 // Control constants
-#define BASELINE_DC 0.65
-#define TARGET_SPEED 20.0
+#define BASELINE_DC 0.3  // 0.65
+#define TARGET_SPEED 25.0 // 20.0
 #define ADJUSTMENT_FACTOR 0.02
 #define PULSES_PER_REVOLUTION 20 // Define the constant with an appropriate value
 
@@ -199,8 +199,8 @@ void set_motor_direction(bool right_forward, bool left_forward)
 {
     gpio_put(RIGHT_DIR_PIN1, right_forward ? 0 : 1);
     gpio_put(RIGHT_DIR_PIN2, right_forward ? 1 : 0);
-    gpio_put(LEFT_DIR_PIN1, left_forward ? 0 : 1);
-    gpio_put(LEFT_DIR_PIN2, left_forward ? 1 : 0);
+    gpio_put(LEFT_DIR_PIN1, left_forward ? 1 : 0);
+    gpio_put(LEFT_DIR_PIN2, left_forward ? 0 : 1);
 }
 
 void set_movement_state(int new_state)
@@ -300,7 +300,7 @@ bool repeating_timer_callback(__unused struct repeating_timer *t)
         right_duty_cycle = right_duty_cycle > 1.0f ? 1.0f : (right_duty_cycle < 0.0f ? 0.0f : right_duty_cycle);
         left_duty_cycle = left_duty_cycle > 1.0f ? 1.0f : (left_duty_cycle < 0.0f ? 0.0f : left_duty_cycle);
 
-        printf("Right Duty Cycle: %.2f | Left Duty Cycle: %.2f\n", right_duty_cycle, left_duty_cycle);
+        // printf("Right Duty Cycle: %.2f | Left Duty Cycle: %.2f\n", right_duty_cycle, left_duty_cycle);
 
         set_speed(right_duty_cycle, RIGHT_PWM_PIN);
         set_speed(left_duty_cycle, LEFT_PWM_PIN);
@@ -873,8 +873,8 @@ int main()
 
     // Initialize PID controllers for both wheels with appropriate values
     // MARK: PID
-    setup_pid(&left_pid, 0, 0, 0.001);
-    setup_pid(&right_pid, 0, 0, 0.001);
+    setup_pid(&left_pid, 0.14, 0.012, 0.001);
+    setup_pid(&right_pid, 0.215, 0.045, 0.002);
 
     struct repeating_timer timer;
     add_repeating_timer_us(timer_value, repeating_timer_callback, NULL, &timer);
